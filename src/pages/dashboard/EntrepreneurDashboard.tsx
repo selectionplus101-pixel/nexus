@@ -4,38 +4,114 @@ import { Users, Bell, Calendar, TrendingUp, AlertCircle, PlusCircle } from 'luci
 import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
-import { CollaborationRequestCard } from '../../components/collaboration/CollaborationRequestCard';
 import { InvestorCard } from '../../components/investor/InvestorCard';
+import { CollaborationRequestCard } from '../../components/collaboration/CollaborationRequestCard';
 import { useAuth } from '../../context/AuthContext';
-import { CollaborationRequest } from '../../types';
-import { getRequestsForEntrepreneur } from '../../data/collaborationRequests';
-import { investors } from '../../data/users';
+import { Investor, CollaborationRequest } from '../../types';
+import { usersApi, dashboardApi, collaborationApi } from '../../services/api';
+import toast from 'react-hot-toast';
+
+interface DashboardStats {
+  totalMeetings: number;
+  upcomingMeetings: number;
+  pendingInvitations: number;
+  totalConnections: number;
+  unreadMessages: number;
+  totalInvestors: number;
+  recentActivity: number;
+  profileViews: number;
+}
 
 export const EntrepreneurDashboard: React.FC = () => {
   const { user } = useAuth();
+  const [recommendedInvestors, setRecommendedInvestors] = useState<Investor[]>([]);
   const [collaborationRequests, setCollaborationRequests] = useState<CollaborationRequest[]>([]);
-  const [recommendedInvestors, setRecommendedInvestors] = useState(investors.slice(0, 3));
-  
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(true);
+
+  // Fetch dashboard statistics
   useEffect(() => {
-    if (user) {
-      // Load collaboration requests
-      const requests = getRequestsForEntrepreneur(user.id);
-      setCollaborationRequests(requests);
-    }
-  }, [user]);
-  
-  const handleRequestStatusUpdate = (requestId: string, status: 'accepted' | 'rejected') => {
-    setCollaborationRequests(prevRequests => 
-      prevRequests.map(req => 
-        req.id === requestId ? { ...req, status } : req
-      )
-    );
-  };
-  
+    const fetchStats = async () => {
+      try {
+        setIsLoadingStats(true);
+        const data = await dashboardApi.getEntrepreneurStats();
+        setStats(data);
+      } catch (error: any) {
+        toast.error('Failed to load dashboard statistics');
+        console.error('Error fetching stats:', error);
+      } finally {
+        setIsLoadingStats(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
+
+  // Fetch investors from backend
+  useEffect(() => {
+    const fetchInvestors = async () => {
+      try {
+        setIsLoading(true);
+        const data = await usersApi.getAll({ role: 'investor' });
+        setRecommendedInvestors(data.slice(0, 3)); // Show first 3 as recommended
+      } catch (error: any) {
+        toast.error('Failed to load investors');
+        console.error('Error fetching investors:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchInvestors();
+  }, []);
+
+  // Fetch collaboration requests from backend
+  useEffect(() => {
+    const fetchCollaborationRequests = async () => {
+      try {
+        setIsLoadingRequests(true);
+        const data = await collaborationApi.getAll();
+        setCollaborationRequests(data);
+      } catch (error: any) {
+        toast.error('Failed to load collaboration requests');
+        console.error('Error fetching collaboration requests:', error);
+      } finally {
+        setIsLoadingRequests(false);
+      }
+    };
+
+    fetchCollaborationRequests();
+  }, []);
+
   if (!user) return null;
-  
+
   const pendingRequests = collaborationRequests.filter(req => req.status === 'pending');
-  
+
+  // Handle collaboration request status updates
+  const handleRequestStatusUpdate = async (requestId: string, status: 'accepted' | 'rejected') => {
+    try {
+      await collaborationApi.updateStatus(requestId, status);
+
+      // Update local state
+      setCollaborationRequests(prev =>
+        prev.map(req =>
+          req.id === requestId ? { ...req, status } : req
+        )
+      );
+
+      if (status === 'accepted') {
+        toast.success('Collaboration request accepted');
+      } else {
+        toast.success('Collaboration request declined');
+      }
+    } catch (error: any) {
+      toast.error('Failed to update collaboration request');
+      console.error('Error updating collaboration request:', error);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex justify-between items-center">
@@ -62,8 +138,10 @@ export const EntrepreneurDashboard: React.FC = () => {
                 <Bell size={20} className="text-primary-700" />
               </div>
               <div>
-                <p className="text-sm font-medium text-primary-700">Pending Requests</p>
-                <h3 className="text-xl font-semibold text-primary-900">{pendingRequests.length}</h3>
+                <p className="text-sm font-medium text-primary-700">Pending Invitations</p>
+                <h3 className="text-xl font-semibold text-primary-900">
+                  {isLoadingStats ? '...' : stats?.pendingInvitations || 0}
+                </h3>
               </div>
             </div>
           </CardBody>
@@ -78,7 +156,7 @@ export const EntrepreneurDashboard: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-secondary-700">Total Connections</p>
                 <h3 className="text-xl font-semibold text-secondary-900">
-                  {collaborationRequests.filter(req => req.status === 'accepted').length}
+                  {isLoadingStats ? '...' : stats?.totalConnections || 0}
                 </h3>
               </div>
             </div>
@@ -93,7 +171,9 @@ export const EntrepreneurDashboard: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm font-medium text-accent-700">Upcoming Meetings</p>
-                <h3 className="text-xl font-semibold text-accent-900">2</h3>
+                <h3 className="text-xl font-semibold text-accent-900">
+                  {isLoadingStats ? '...' : stats?.upcomingMeetings || 0}
+                </h3>
               </div>
             </div>
           </CardBody>
@@ -106,8 +186,10 @@ export const EntrepreneurDashboard: React.FC = () => {
                 <TrendingUp size={20} className="text-success-700" />
               </div>
               <div>
-                <p className="text-sm font-medium text-success-700">Profile Views</p>
-                <h3 className="text-xl font-semibold text-success-900">24</h3>
+                <p className="text-sm font-medium text-success-700">Total Meetings</p>
+                <h3 className="text-xl font-semibold text-success-900">
+                  {isLoadingStats ? '...' : stats?.totalMeetings || 0}
+                </h3>
               </div>
             </div>
           </CardBody>
@@ -124,7 +206,11 @@ export const EntrepreneurDashboard: React.FC = () => {
             </CardHeader>
             
             <CardBody>
-              {collaborationRequests.length > 0 ? (
+              {isLoadingRequests ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-600">Loading collaboration requests...</p>
+                </div>
+              ) : collaborationRequests.length > 0 ? (
                 <div className="space-y-4">
                   {collaborationRequests.map(request => (
                     <CollaborationRequestCard

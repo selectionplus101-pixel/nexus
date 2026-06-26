@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { MessageCircle, Building2, MapPin, UserCircle, BarChart3, Briefcase } from 'lucide-react';
 import { Avatar } from '../../components/ui/Avatar';
@@ -6,17 +6,52 @@ import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { useAuth } from '../../context/AuthContext';
-import { findUserById } from '../../data/users';
+import { usersApi } from '../../services/api';
 import { Investor } from '../../types';
+import toast from 'react-hot-toast';
 
 export const InvestorProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { user: currentUser } = useAuth();
-  
-  // Fetch investor data
-  const investor = findUserById(id || '') as Investor | null;
-  
-  if (!investor || investor.role !== 'investor') {
+  const [investor, setInvestor] = useState<Investor | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch investor data from backend
+  useEffect(() => {
+    const fetchInvestor = async () => {
+      if (!id) return;
+
+      try {
+        setIsLoading(true);
+        const data = await usersApi.getById(id);
+
+        if (data.role !== 'investor') {
+          setInvestor(null);
+        } else {
+          setInvestor(data);
+        }
+      } catch (error: any) {
+        toast.error('Failed to load investor profile');
+        console.error('Error fetching investor:', error);
+        setInvestor(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchInvestor();
+  }, [id]);
+
+  if (isLoading) {
+    return (
+      <div className="text-center py-12">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary-600 border-r-transparent"></div>
+        <p className="mt-4 text-gray-600">Loading profile...</p>
+      </div>
+    );
+  }
+
+  if (!investor) {
     return (
       <div className="text-center py-12">
         <h2 className="text-2xl font-bold text-gray-900">Investor not found</h2>

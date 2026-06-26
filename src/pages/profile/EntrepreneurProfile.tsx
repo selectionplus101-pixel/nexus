@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { MessageCircle, Users, Calendar, Building2, MapPin, UserCircle, FileText, DollarSign, Send } from 'lucide-react';
 import { Avatar } from '../../components/ui/Avatar';
@@ -6,18 +6,52 @@ import { Button } from '../../components/ui/Button';
 import { Card, CardBody, CardHeader } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { useAuth } from '../../context/AuthContext';
-import { findUserById } from '../../data/users';
-import { createCollaborationRequest, getRequestsFromInvestor } from '../../data/collaborationRequests';
+import { usersApi } from '../../services/api';
 import { Entrepreneur } from '../../types';
+import toast from 'react-hot-toast';
 
 export const EntrepreneurProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { user: currentUser } = useAuth();
-  
-  // Fetch entrepreneur data
-  const entrepreneur = findUserById(id || '') as Entrepreneur | null;
-  
-  if (!entrepreneur || entrepreneur.role !== 'entrepreneur') {
+  const [entrepreneur, setEntrepreneur] = useState<Entrepreneur | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch entrepreneur data from backend
+  useEffect(() => {
+    const fetchEntrepreneur = async () => {
+      if (!id) return;
+
+      try {
+        setIsLoading(true);
+        const data = await usersApi.getById(id);
+
+        if (data.role !== 'entrepreneur') {
+          setEntrepreneur(null);
+        } else {
+          setEntrepreneur(data);
+        }
+      } catch (error: any) {
+        toast.error('Failed to load entrepreneur profile');
+        console.error('Error fetching entrepreneur:', error);
+        setEntrepreneur(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchEntrepreneur();
+  }, [id]);
+
+  if (isLoading) {
+    return (
+      <div className="text-center py-12">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary-600 border-r-transparent"></div>
+        <p className="mt-4 text-gray-600">Loading profile...</p>
+      </div>
+    );
+  }
+
+  if (!entrepreneur) {
     return (
       <div className="text-center py-12">
         <h2 className="text-2xl font-bold text-gray-900">Entrepreneur not found</h2>
@@ -31,25 +65,6 @@ export const EntrepreneurProfile: React.FC = () => {
   
   const isCurrentUser = currentUser?.id === entrepreneur.id;
   const isInvestor = currentUser?.role === 'investor';
-  
-  // Check if the current investor has already sent a request to this entrepreneur
-  const hasRequestedCollaboration = isInvestor && id 
-    ? getRequestsFromInvestor(currentUser.id).some(req => req.entrepreneurId === id)
-    : false;
-  
-  const handleSendRequest = () => {
-    if (isInvestor && currentUser && id) {
-      createCollaborationRequest(
-        currentUser.id,
-        id,
-        `I'm interested in learning more about ${entrepreneur.startupName} and would like to explore potential investment opportunities.`
-      );
-      
-      // In a real app, we would refresh the data or update state
-      // For this demo, we'll force a page reload
-      window.location.reload();
-    }
-  };
   
   return (
     <div className="space-y-6 animate-fade-in">

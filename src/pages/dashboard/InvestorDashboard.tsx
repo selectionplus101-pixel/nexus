@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Users, PieChart, Filter, Search, PlusCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
@@ -8,20 +8,66 @@ import { Badge } from '../../components/ui/Badge';
 import { EntrepreneurCard } from '../../components/entrepreneur/EntrepreneurCard';
 import { useAuth } from '../../context/AuthContext';
 import { Entrepreneur } from '../../types';
-import { entrepreneurs } from '../../data/users';
-import { getRequestsFromInvestor } from '../../data/collaborationRequests';
+import { usersApi, dashboardApi } from '../../services/api';
+import toast from 'react-hot-toast';
+
+interface DashboardStats {
+  totalMeetings: number;
+  upcomingMeetings: number;
+  pendingInvitations: number;
+  totalConnections: number;
+  unreadMessages: number;
+  totalEntrepreneurs: number;
+  recentActivity: number;
+}
 
 export const InvestorDashboard: React.FC = () => {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIndustries, setSelectedIndustries] = useState<string[]>([]);
-  
+  const [entrepreneurs, setEntrepreneurs] = useState<Entrepreneur[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
+
+  // Fetch dashboard statistics
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        setIsLoadingStats(true);
+        const data = await dashboardApi.getInvestorStats();
+        setStats(data);
+      } catch (error: any) {
+        toast.error('Failed to load dashboard statistics');
+        console.error('Error fetching stats:', error);
+      } finally {
+        setIsLoadingStats(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
+
+  // Fetch entrepreneurs from backend
+  useEffect(() => {
+    const fetchEntrepreneurs = async () => {
+      try {
+        setIsLoading(true);
+        const data = await usersApi.getAll({ role: 'entrepreneur' });
+        setEntrepreneurs(data);
+      } catch (error: any) {
+        toast.error('Failed to load entrepreneurs');
+        console.error('Error fetching entrepreneurs:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchEntrepreneurs();
+  }, []);
+
   if (!user) return null;
-  
-  // Get collaboration requests sent by this investor
-  const sentRequests = getRequestsFromInvestor(user.id);
-  const requestedEntrepreneurIds = sentRequests.map(req => req.entrepreneurId);
-  
+
   // Filter entrepreneurs based on search and industry filters
   const filteredEntrepreneurs = entrepreneurs.filter(entrepreneur => {
     // Search filter
@@ -110,12 +156,14 @@ export const InvestorDashboard: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm font-medium text-primary-700">Total Startups</p>
-                <h3 className="text-xl font-semibold text-primary-900">{entrepreneurs.length}</h3>
+                <h3 className="text-xl font-semibold text-primary-900">
+                  {isLoadingStats ? '...' : stats?.totalEntrepreneurs || 0}
+                </h3>
               </div>
             </div>
           </CardBody>
         </Card>
-        
+
         <Card className="bg-secondary-50 border border-secondary-100">
           <CardBody>
             <div className="flex items-center">
@@ -123,13 +171,15 @@ export const InvestorDashboard: React.FC = () => {
                 <PieChart size={20} className="text-secondary-700" />
               </div>
               <div>
-                <p className="text-sm font-medium text-secondary-700">Industries</p>
-                <h3 className="text-xl font-semibold text-secondary-900">{industries.length}</h3>
+                <p className="text-sm font-medium text-secondary-700">Total Meetings</p>
+                <h3 className="text-xl font-semibold text-secondary-900">
+                  {isLoadingStats ? '...' : stats?.totalMeetings || 0}
+                </h3>
               </div>
             </div>
           </CardBody>
         </Card>
-        
+
         <Card className="bg-accent-50 border border-accent-100">
           <CardBody>
             <div className="flex items-center">
@@ -139,7 +189,7 @@ export const InvestorDashboard: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-accent-700">Your Connections</p>
                 <h3 className="text-xl font-semibold text-accent-900">
-                  {sentRequests.filter(req => req.status === 'accepted').length}
+                  {isLoadingStats ? '...' : stats?.totalConnections || 0}
                 </h3>
               </div>
             </div>

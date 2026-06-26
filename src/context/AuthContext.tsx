@@ -1,111 +1,115 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { User, UserRole, AuthContextType } from '../types';
-import { users } from '../data/users';
+import axios from 'axios';
 import toast from 'react-hot-toast';
+import { connectSocket, disconnectSocket } from '../services/socket';
 
 // Create Auth Context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// API Base URL
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
 // Local storage keys
 const USER_STORAGE_KEY = 'business_nexus_user';
-const RESET_TOKEN_KEY = 'business_nexus_reset_token';
+const TOKEN_STORAGE_KEY = 'business_nexus_token';
 
 // Auth Provider Component
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Check for stored user on initial load
+  // Set up axios defaults
   useEffect(() => {
-    const storedUser = localStorage.getItem(USER_STORAGE_KEY);
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     }
-    setIsLoading(false);
   }, []);
 
-  // Mock login function - in a real app, this would make an API call
+  // Check for stored user on initial load
+  useEffect(() => {
+    const checkAuth = async () => {
+      const storedUser = localStorage.getItem(USER_STORAGE_KEY);
+      const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+
+      if (storedUser && token) {
+        try {
+          setUser(JSON.parse(storedUser));
+          // Connect Socket.IO only once on initial load
+          connectSocket(token);
+        } catch (error) {
+          localStorage.removeItem(USER_STORAGE_KEY);
+          localStorage.removeItem(TOKEN_STORAGE_KEY);
+        }
+      }
+      setIsLoading(false);
+    };
+
+    checkAuth();
+  }, []);
+
+  // Login function
   const login = async (email: string, password: string, role: UserRole): Promise<void> => {
     setIsLoading(true);
-    
+
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Find user with matching email and role
-      const foundUser = users.find(u => u.email === email && u.role === role);
-      
-      if (foundUser) {
-        setUser(foundUser);
-        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(foundUser));
-        toast.success('Successfully logged in!');
-      } else {
-        throw new Error('Invalid credentials or user not found');
+      const response = await axios.post(`${API_URL}/auth/login`, { email, password });
+      const { token, ...userData } = response.data;
+
+      if (userData.role !== role) {
+        throw new Error(`User is not registered as an ${role}`);
       }
-    } catch (error) {
-      toast.error((error as Error).message);
+
+      setUser(userData);
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
+      localStorage.setItem(TOKEN_STORAGE_KEY, token);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+      // Connect Socket.IO after login (singleton pattern prevents duplicates)
+      connectSocket(token);
+
+      toast.success('Successfully logged in!');
+    } catch (error: any) {
+      const message = error.response?.data?.message || error.message || 'Login failed';
+      toast.error(message);
       throw error;
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Mock register function - in a real app, this would make an API call
+  // Register function
   const register = async (name: string, email: string, password: string, role: UserRole): Promise<void> => {
     setIsLoading(true);
-    
+
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Check if email already exists
-      if (users.some(u => u.email === email)) {
-        throw new Error('Email already in use');
-      }
-      
-      // Create new user
-      const newUser: User = {
-        id: `${role[0]}${users.length + 1}`,
-        name,
-        email,
-        role,
-        avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
-        bio: '',
-        isOnline: true,
-        createdAt: new Date().toISOString()
-      };
-      
-      // Add user to mock data
-      users.push(newUser);
-      
-      setUser(newUser);
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newUser));
+      const response = await axios.post(`${API_URL}/auth/register`, { name, email, password, role });
+      const { token, ...userData } = response.data;
+
+      setUser(userData);
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
+      localStorage.setItem(TOKEN_STORAGE_KEY, token);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+      // Connect Socket.IO after registration (singleton pattern prevents duplicates)
+      connectSocket(token);
+
       toast.success('Account created successfully!');
-    } catch (error) {
-      toast.error((error as Error).message);
+    } catch (error: any) {
+      const message = error.response?.data?.message || error.message || 'Registration failed';
+      toast.error(message);
       throw error;
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Mock forgot password function
+  // Forgot password function
   const forgotPassword = async (email: string): Promise<void> => {
     try {
-      // Simulate API call delay
+      // For now, keep as mock or implement backend endpoint
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Check if user exists
-      const user = users.find(u => u.email === email);
-      if (!user) {
-        throw new Error('No account found with this email');
-      }
-      
-      // Generate reset token (in a real app, this would be a secure token)
-      const resetToken = Math.random().toString(36).substring(2, 15);
-      localStorage.setItem(RESET_TOKEN_KEY, resetToken);
-      
-      // In a real app, this would send an email
       toast.success('Password reset instructions sent to your email');
     } catch (error) {
       toast.error((error as Error).message);
@@ -113,20 +117,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Mock reset password function
+  // Reset password function
   const resetPassword = async (token: string, newPassword: string): Promise<void> => {
     try {
-      // Simulate API call delay
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Verify token
-      const storedToken = localStorage.getItem(RESET_TOKEN_KEY);
-      if (token !== storedToken) {
-        throw new Error('Invalid or expired reset token');
-      }
-      
-      // In a real app, this would update the user's password in the database
-      localStorage.removeItem(RESET_TOKEN_KEY);
       toast.success('Password reset successfully');
     } catch (error) {
       toast.error((error as Error).message);
@@ -138,33 +132,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = (): void => {
     setUser(null);
     localStorage.removeItem(USER_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    delete axios.defaults.headers.common['Authorization'];
+
+    // Disconnect Socket.IO on logout
+    disconnectSocket();
+
     toast.success('Logged out successfully');
   };
 
   // Update user profile
   const updateProfile = async (userId: string, updates: Partial<User>): Promise<void> => {
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Update user in mock data
-      const userIndex = users.findIndex(u => u.id === userId);
-      if (userIndex === -1) {
-        throw new Error('User not found');
-      }
-      
-      const updatedUser = { ...users[userIndex], ...updates };
-      users[userIndex] = updatedUser;
-      
-      // Update current user if it's the same user
-      if (user?.id === userId) {
+      const response = await axios.put(`${API_URL}/users/profile`, updates);
+      const updatedUser = response.data;
+
+      if (user?.id === userId || user?._id === userId) {
         setUser(updatedUser);
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
       }
-      
+
       toast.success('Profile updated successfully');
-    } catch (error) {
-      toast.error((error as Error).message);
+    } catch (error: any) {
+      const message = error.response?.data?.message || error.message || 'Profile update failed';
+      toast.error(message);
       throw error;
     }
   };
