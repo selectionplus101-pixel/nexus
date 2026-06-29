@@ -151,14 +151,39 @@ socketHandler(io);
 
 const startServer = async () => {
   try {
+    // Attempt to connect to MongoDB
     await connectDB();
+
+    // Start HTTP server
     httpServer.listen(PORT, () => {
       console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
       console.log('[Socket.IO] Real-time chat server ready');
     });
   } catch (error) {
-    console.error(`[FATAL] Server failed to start: ${error.message}`);
-    process.exit(1);
+    console.error(`[ERROR] MongoDB connection failed: ${error.message}`);
+    console.warn('[WARNING] Starting server WITHOUT database connection');
+    console.warn('[WARNING] API endpoints requiring database will fail until connection is established');
+
+    // Start server anyway to allow health checks and debugging
+    httpServer.listen(PORT, () => {
+      console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT} (DB DISCONNECTED)`);
+      console.log('[INFO] Server is running but database is not connected');
+      console.log('[INFO] Check /api/health endpoint for status');
+    });
+
+    // Attempt to reconnect to MongoDB in background
+    console.log('[INFO] Will retry MongoDB connection in 10 seconds...');
+    setTimeout(async () => {
+      try {
+        console.log('[RETRY] Attempting to reconnect to MongoDB...');
+        await connectDB();
+        console.log('[SUCCESS] MongoDB reconnected successfully');
+      } catch (retryError) {
+        console.error(`[RETRY FAILED] Could not reconnect to MongoDB: ${retryError.message}`);
+        console.log('[INFO] Will continue running without database');
+        console.log('[INFO] Restart the application after fixing MongoDB connection');
+      }
+    }, 10000);
   }
 };
 
