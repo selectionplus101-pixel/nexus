@@ -35,9 +35,19 @@ const app = express();
 const httpServer = createServer(app);
 
 // Initialize Socket.IO with CORS configuration
+const allowedSocketOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://nexus-y1w8.vercel.app',
+];
+
+if (process.env.CLIENT_URL && !allowedSocketOrigins.includes(process.env.CLIENT_URL)) {
+  allowedSocketOrigins.push(process.env.CLIENT_URL);
+}
+
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: allowedSocketOrigins,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -61,20 +71,39 @@ app.use(
   })
 );
 
-// CORS configuration with whitelist
+// CORS configuration with whitelist - support multiple origins
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://nexus-y1w8.vercel.app',
+];
+
+// Add CLIENT_URL from environment if provided
+if (process.env.CLIENT_URL && !allowedOrigins.includes(process.env.CLIENT_URL)) {
+  allowedOrigins.push(process.env.CLIENT_URL);
+}
+
 const corsOptions = {
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   optionsSuccessStatus: 200,
 };
 app.use(cors(corsOptions));
 
 // Prevent MongoDB injection attacks
+// Note: Express 5.x has breaking changes - req.query is read-only
+// Using replaceWith option only (no onSanitize with Express 5)
 app.use(mongoSanitize({
   replaceWith: '_',
-  onSanitize: ({ req, key }) => {
-    console.warn(`[SECURITY] Sanitized MongoDB injection attempt on key: ${key}`);
-  },
 }));
 
 // Prevent XSS attacks
