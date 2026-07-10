@@ -20,7 +20,6 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "express-mongo-sanitize": "^2.2.0",
     "express-rate-limit": "^8.5.2",
     "express-validator": "^7.3.2",
     "helmet": "^8.2.0",
@@ -29,7 +28,6 @@
     "morgan": "^1.11.0",
     "multer": "^2.2.0",
     "socket.io": "^4.8.3",
-    "xss-clean": "^0.1.4"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
