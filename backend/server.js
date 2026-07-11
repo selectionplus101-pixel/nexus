@@ -6,8 +6,9 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import mongoose from 'mongoose';
-import mongoSanitize from 'express-mongo-sanitize';
-import xss from 'xss-clean';
+// express-mongo-sanitize and xss-clean are incompatible with Express 5.x - using custom middleware
+import mongoSanitize from './middleware/mongoSanitizeMiddleware.js';
+import xssProtection from './middleware/xssProtectionMiddleware.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import connectDB from './config/db.js';
@@ -100,14 +101,14 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Prevent MongoDB injection attacks
-// Note: Express 5.x has breaking changes - req.query is read-only
-// Using replaceWith option only (no onSanitize with Express 5)
+// Custom middleware for Express 5.x compatibility (express-mongo-sanitize incompatible)
 app.use(mongoSanitize({
   replaceWith: '_',
 }));
 
 // Prevent XSS attacks
-app.use(xss());
+// Custom middleware for Express 5.x compatibility (xss-clean incompatible)
+app.use(xssProtection());
 
 // Apply general API rate limiting
 app.use('/api/', apiLimiter);
