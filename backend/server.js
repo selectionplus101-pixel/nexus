@@ -77,6 +77,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
   'https://nexus-y1w8.vercel.app',
+  'https://nexus-f-d.vercel.app',
 ];
 
 // Add CLIENT_URL from environment if provided
