@@ -23,9 +23,8 @@ const connectDB = async () => {
       connectTimeoutMS: 30000,            // 30 seconds for initial connection
       socketTimeoutMS: 45000,             // 45 seconds for socket inactivity
       family: 4,                          // Use IPv4, skip trying IPv6
-      // TLS/SSL configuration for Railway compatibility
-      ssl: true,
-      tls: true,
+      // Remove explicit TLS options - let MongoDB driver handle TLS automatically
+      // This avoids TLS configuration conflicts on Railway
     };
 
     const conn = await mongoose.connect(uri, options);
@@ -47,6 +46,9 @@ const connectDB = async () => {
     } else if (error.message.includes('timed out')) {
       console.error('[DIAGNOSTIC] Connection timed out');
       console.error('[SOLUTION] Check network connectivity and firewall settings');
+    } else if (error.message.includes('ssl') || error.message.includes('tls')) {
+      console.error('[DIAGNOSTIC] TLS/SSL handshake error');
+      console.error('[SOLUTION] MongoDB Atlas may need IP whitelist update for Railway');
     }
 
     throw error;
