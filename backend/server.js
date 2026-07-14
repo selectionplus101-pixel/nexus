@@ -158,42 +158,53 @@ socketHandler(io);
 const startServer = async () => {
   console.log('[INFO] Starting Nexus backend server...');
 
-  // MongoDB must be connected before accepting HTTP requests
+  // Start HTTP server first for health checks and basic functionality
+  httpServer.listen(PORT, () => {
+    console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    console.log('[Socket.IO] Real-time chat server ready');
+  });
+
+  // Attempt MongoDB connection with retries, but don't block server startup
   let dbConnected = false;
   let retryCount = 0;
-  const maxRetries = 5;
+  const maxRetries = 3;
 
   while (!dbConnected && retryCount < maxRetries) {
     try {
       console.log(`[ATTEMPT ${retryCount + 1}/${maxRetries}] Connecting to MongoDB...`);
       await connectDB();
       dbConnected = true;
-      console.log('[SUCCESS] MongoDB connection established');
+      console.log('[SUCCESS] MongoDB connection established - all systems operational');
     } catch (error) {
       retryCount++;
       console.error(`[ERROR] MongoDB connection failed (attempt ${retryCount}/${maxRetries}): ${error.message}`);
 
       if (retryCount < maxRetries) {
-        const delay = Math.min(5000 * retryCount, 30000); // Exponential backoff, max 30s
+        const delay = 5000 * retryCount; // Linear backoff: 5s, 10s, 15s
         console.log(`[RETRY] Waiting ${delay/1000}s before next attempt...`);
         await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.warn('[WARNING] MongoDB connection failed after all retries');
+        console.warn('[WARNING] Server is running with limited functionality');
+        console.warn('[WARNING] Database-dependent API endpoints will return errors');
+
+        // Continue running for health checks and troubleshooting
+        console.log('[INFO] Server will continue running for health checks and debugging');
+
+        // Set up background retry every 30 seconds
+        const backgroundRetry = setInterval(async () => {
+          try {
+            console.log('[BACKGROUND] Retrying MongoDB connection...');
+            await connectDB();
+            console.log('[SUCCESS] MongoDB connection established via background retry');
+            clearInterval(backgroundRetry);
+          } catch (bgError) {
+            console.log('[BACKGROUND] MongoDB connection still failed, will retry in 30s');
+          }
+        }, 30000);
       }
     }
   }
-
-  if (!dbConnected) {
-    console.error('[FATAL] Could not establish MongoDB connection after multiple attempts');
-    console.error('[FATAL] Server cannot start without database connection');
-    process.exit(1);
-  }
-
-  // Only start HTTP server after MongoDB is connected
-  httpServer.listen(PORT, () => {
-    console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-    console.log('[SUCCESS] HTTP server started successfully');
-    console.log('[Socket.IO] Real-time chat server ready');
-    console.log('[INFO] All systems operational - ready to accept requests');
-  });
 };
 
 startServer();
