@@ -23,6 +23,9 @@ const connectDB = async () => {
       connectTimeoutMS: 30000,            // 30 seconds for initial connection
       socketTimeoutMS: 45000,             // 45 seconds for socket inactivity
       family: 4,                          // Use IPv4, skip trying IPv6
+      // TLS/SSL configuration for Railway compatibility
+      ssl: true,
+      tls: true,
     };
 
     const conn = await mongoose.connect(uri, options);

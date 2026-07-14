@@ -35,6 +35,10 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 
+// Configure trust proxy for Railway deployment
+// Railway uses proxies, so we need to trust the first hop
+app.set('trust proxy', 1);
+
 // Initialize Socket.IO with CORS configuration
 const allowedSocketOrigins = [
   'http://localhost:3000',
@@ -152,41 +156,44 @@ const PORT = process.env.PORT || 5000;
 socketHandler(io);
 
 const startServer = async () => {
-  try {
-    // Attempt to connect to MongoDB
-    await connectDB();
+  console.log('[INFO] Starting Nexus backend server...');
 
-    // Start HTTP server
-    httpServer.listen(PORT, () => {
-      console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-      console.log('[Socket.IO] Real-time chat server ready');
-    });
-  } catch (error) {
-    console.error(`[ERROR] MongoDB connection failed: ${error.message}`);
-    console.warn('[WARNING] Starting server WITHOUT database connection');
-    console.warn('[WARNING] API endpoints requiring database will fail until connection is established');
+  // MongoDB must be connected before accepting HTTP requests
+  let dbConnected = false;
+  let retryCount = 0;
+  const maxRetries = 5;
 
-    // Start server anyway to allow health checks and debugging
-    httpServer.listen(PORT, () => {
-      console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT} (DB DISCONNECTED)`);
-      console.log('[INFO] Server is running but database is not connected');
-      console.log('[INFO] Check /api/health endpoint for status');
-    });
+  while (!dbConnected && retryCount < maxRetries) {
+    try {
+      console.log(`[ATTEMPT ${retryCount + 1}/${maxRetries}] Connecting to MongoDB...`);
+      await connectDB();
+      dbConnected = true;
+      console.log('[SUCCESS] MongoDB connection established');
+    } catch (error) {
+      retryCount++;
+      console.error(`[ERROR] MongoDB connection failed (attempt ${retryCount}/${maxRetries}): ${error.message}`);
 
-    // Attempt to reconnect to MongoDB in background
-    console.log('[INFO] Will retry MongoDB connection in 10 seconds...');
-    setTimeout(async () => {
-      try {
-        console.log('[RETRY] Attempting to reconnect to MongoDB...');
-        await connectDB();
-        console.log('[SUCCESS] MongoDB reconnected successfully');
-      } catch (retryError) {
-        console.error(`[RETRY FAILED] Could not reconnect to MongoDB: ${retryError.message}`);
-        console.log('[INFO] Will continue running without database');
-        console.log('[INFO] Restart the application after fixing MongoDB connection');
+      if (retryCount < maxRetries) {
+        const delay = Math.min(5000 * retryCount, 30000); // Exponential backoff, max 30s
+        console.log(`[RETRY] Waiting ${delay/1000}s before next attempt...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
-    }, 10000);
+    }
   }
+
+  if (!dbConnected) {
+    console.error('[FATAL] Could not establish MongoDB connection after multiple attempts');
+    console.error('[FATAL] Server cannot start without database connection');
+    process.exit(1);
+  }
+
+  // Only start HTTP server after MongoDB is connected
+  httpServer.listen(PORT, () => {
+    console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    console.log('[SUCCESS] HTTP server started successfully');
+    console.log('[Socket.IO] Real-time chat server ready');
+    console.log('[INFO] All systems operational - ready to accept requests');
+  });
 };
 
 startServer();
